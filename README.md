@@ -61,6 +61,8 @@ defaultGroup: "default"
 createAdminGroup: true
 ```
 
+`defaultGroup` 是所有用户自动继承的基础权限组，默认是 `default`，不需要给每个用户手动添加。
+
 如果没有给用户授权 `luckperms.admin`，ZeroBot 主配置里的 `superAdmins` 仍然可以使用管理命令。
 
 ## 命令
@@ -121,7 +123,6 @@ data/luckperms/permissions.yml
 示例：
 
 ```yml
-defaultGroup: "default"
 groups:
   default:
     name: "default"

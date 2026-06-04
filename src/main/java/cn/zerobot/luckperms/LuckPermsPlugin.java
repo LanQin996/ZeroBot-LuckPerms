@@ -273,12 +273,14 @@ public class LuckPermsPlugin implements BotPlugin {
                 String sub = args.get(3).toLowerCase(Locale.ROOT);
                 String groupName = args.get(4);
                 if (isAny(sub, "add", "set", "give", "grant")) {
-                    repository.addUserGroup(userId, groupName);
-                    return "用户已加入权限组：" + userId + " -> " + normalizeName(groupName);
+                    return repository.addUserGroup(userId, groupName)
+                            ? "用户已加入权限组：" + userId + " -> " + normalizeName(groupName)
+                            : "基础权限组自动继承，无需手动添加：" + settings.getDefaultGroup();
                 }
                 if (isAny(sub, "remove", "delete", "del", "rm", "unset", "clear")) {
-                    repository.removeUserGroup(userId, groupName);
-                    return "用户已移出权限组：" + userId + " -/-> " + normalizeName(groupName);
+                    return repository.removeUserGroup(userId, groupName)
+                            ? "用户已移出权限组：" + userId + " -/-> " + normalizeName(groupName)
+                            : "基础权限组自动继承，不能从用户身上移除：" + settings.getDefaultGroup();
                 }
                 throw new CommandException("用法：user <QQ> parent <add|remove> <组名>");
             }
@@ -716,7 +718,7 @@ public class LuckPermsPlugin implements BotPlugin {
 
         synchronized boolean deleteGroup(String name) throws IOException, CommandException {
             String key = requireName(name);
-            if (key.equals(store.defaultGroup) || store.groups.remove(key) == null) {
+            if (key.equals(settings.getDefaultGroup()) || store.groups.remove(key) == null) {
                 return false;
             }
             for (PermissionGroup group : store.groups.values()) {
@@ -788,16 +790,25 @@ public class LuckPermsPlugin implements BotPlugin {
             save();
         }
 
-        synchronized void addUserGroup(String userId, String groupName) throws IOException, CommandException {
+        synchronized boolean addUserGroup(String userId, String groupName) throws IOException, CommandException {
             String groupKey = requireName(groupName);
             group(groupKey);
+            if (groupKey.equals(settings.getDefaultGroup())) {
+                return false;
+            }
             user(userId).groups.add(groupKey);
             save();
+            return true;
         }
 
-        synchronized void removeUserGroup(String userId, String groupName) throws IOException, CommandException {
-            user(userId).groups.remove(requireName(groupName));
+        synchronized boolean removeUserGroup(String userId, String groupName) throws IOException, CommandException {
+            String groupKey = requireName(groupName);
+            if (groupKey.equals(settings.getDefaultGroup())) {
+                return false;
+            }
+            user(userId).groups.remove(groupKey);
             save();
+            return true;
         }
 
         synchronized PermissionDecision resolve(PermissionSubject subject, String permission) {
@@ -861,25 +872,22 @@ public class LuckPermsPlugin implements BotPlugin {
             PermissionUser user = store.users.getOrDefault(key, new PermissionUser());
             return """
                     用户：%s
-                    权限组：%s
+                    基础权限组：%s
+                    额外权限组：%s
                     权限：%s
                     """.formatted(
                     key,
+                    settings.getDefaultGroup(),
                     user.groups.isEmpty() ? "-" : String.join(", ", user.groups),
                     formatPermissions(user.permissions)
             ).strip();
         }
 
         private void ensureDefaults() {
-            if (store.defaultGroup == null || store.defaultGroup.isBlank()) {
-                store.defaultGroup = settings.getDefaultGroup();
-            } else {
-                store.defaultGroup = normalizeName(store.defaultGroup);
-            }
             store.groups = normalizeGroups(store.groups);
             store.users = normalizeUsers(store.users);
 
-            store.groups.computeIfAbsent(store.defaultGroup, key -> {
+            store.groups.computeIfAbsent(settings.getDefaultGroup(), key -> {
                 PermissionGroup group = new PermissionGroup();
                 group.name = key;
                 group.weight = 0;
@@ -929,6 +937,7 @@ public class LuckPermsPlugin implements BotPlugin {
                 }
                 PermissionUser user = entry.getValue() == null ? new PermissionUser() : entry.getValue();
                 user.groups = normalizeNames(user.groups);
+                user.groups.remove(settings.getDefaultGroup());
                 user.permissions = normalizePermissions(user.permissions);
                 normalized.put(key, user);
             }
@@ -995,7 +1004,7 @@ public class LuckPermsPlugin implements BotPlugin {
 
         private List<PermissionGroup> resolvedGroups(PermissionUser user) {
             LinkedHashSet<String> names = new LinkedHashSet<>();
-            names.add(store.defaultGroup);
+            names.add(settings.getDefaultGroup());
             if (user != null) {
                 names.addAll(user.groups);
             }
@@ -1102,16 +1111,11 @@ public class LuckPermsPlugin implements BotPlugin {
     }
 
     public static class PermissionStore {
-        private String defaultGroup = "default";
         private Map<String, PermissionGroup> groups = new LinkedHashMap<>();
         private Map<String, PermissionUser> users = new LinkedHashMap<>();
 
-        public String getDefaultGroup() {
-            return defaultGroup;
-        }
-
         public void setDefaultGroup(String defaultGroup) {
-            this.defaultGroup = defaultGroup;
+            // Kept for old permissions.yml files; the active default group is configured in config.yml.
         }
 
         public Map<String, PermissionGroup> getGroups() {
