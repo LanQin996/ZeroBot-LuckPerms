@@ -2,3 +2,11 @@ id: luckperms
 name: ZeroBot LuckPerms
 version: 1.0.0
 main: cn.zerobot.luckperms.LuckPermsPlugin
+commands:
+- name: lp
+  aliases:
+  - luckperms
+  description: Manage ZeroBot permission groups and permission nodes.
+  usage: /lp <help|groups|group|user|check|reload|save>
+  permission: luckperms.admin
+  noPermission: 你没有权限使用 LuckPerms 命令。

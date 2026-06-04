@@ -12,7 +12,7 @@ ZeroBot LuckPerms 是一个 LuckPerms 风格的权限组插件，用来接管 Ze
 - 显式拒绝权限，例如 `false`
 - 上下文权限，例如 `group=123456`、`admin=true`
 - YAML 数据持久化
-- `/lp` 管理命令
+- `/lp` 管理命令，别名由 `plugin.yml` 注册
 
 内置超级管理员仍然有效：插件会先询问 ZeroBot 原有权限服务，再判断权限组数据。
 
@@ -51,21 +51,20 @@ config/luckperms/config.yml
 默认配置：
 
 ```yml
-commandPrefixes:
-  - "/lp"
-  - "/luckperms"
-adminPermission: "luckperms.admin"
-noPermissionReply: "你没有权限使用 LuckPerms 命令。"
 dataFile: "permissions.yml"
 defaultGroup: "default"
 createAdminGroup: true
 ```
+
+命令入口、别名、权限节点和无权限提示由 `plugin.yml` 的 `commands` 统一注册。
 
 `defaultGroup` 是所有用户自动继承的基础权限组，默认是 `default`，不需要给每个用户手动添加。
 
 如果没有给用户授权 `luckperms.admin`，ZeroBot 主配置里的 `superAdmins` 仍然可以使用管理命令。
 
 ## 命令
+
+`plugin.yml` 已注册 `lp` 命令，别名为 `luckperms`。下面以 `/lp` 为例：
 
 ```text
 /lp help

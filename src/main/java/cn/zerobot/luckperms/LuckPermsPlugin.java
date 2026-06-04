@@ -2,6 +2,7 @@ package cn.zerobot.luckperms;
 
 import cn.zerobot.api.BotContext;
 import cn.zerobot.api.BotPlugin;
+import cn.zerobot.api.command.CommandContext;
 import cn.zerobot.api.event.MessageEvent;
 import cn.zerobot.api.message.MessageSegment;
 import cn.zerobot.api.permission.PermissionService;
@@ -24,11 +25,6 @@ import java.util.Objects;
 import java.util.Set;
 
 public class LuckPermsPlugin implements BotPlugin {
-    private static final List<String> BUILT_IN_COMMAND_PREFIXES = List.of(
-            "/lp",
-            "/luckperms"
-    );
-
     private BotContext context;
     private Settings settings;
     private PermissionRepository repository;
@@ -42,11 +38,7 @@ public class LuckPermsPlugin implements BotPlugin {
 
         PermissionService service = new LuckPermsPermissionService(context.permission(), repository);
         context.registerPermissionService(service);
-        context.onMessage(event -> {
-            if (event instanceof MessageEvent messageEvent) {
-                handleMessage(messageEvent);
-            }
-        });
+        context.registerCommand("lp", this::handleCommand);
 
         context.logger().info("ZeroBot LuckPerms 已加载，数据文件：{}", displayDataPath(repository.file()));
     }
@@ -61,21 +53,12 @@ public class LuckPermsPlugin implements BotPlugin {
         }
     }
 
-    private void handleMessage(MessageEvent event) throws Exception {
-        ParsedCommand command = parseCommand(event.rawMessage());
-        if (command == null) {
-            return;
-        }
-        if (!settings.getAdminPermission().isBlank()
-                && !context.hasPermission(event, settings.getAdminPermission(), false)) {
-            reply(event, settings.getNoPermissionReply());
-            return;
-        }
-
+    private boolean handleCommand(CommandContext command) throws Exception {
+        MessageEvent event = command.event();
         List<String> args = command.args();
         if (args.isEmpty() || "help".equalsIgnoreCase(args.get(0))) {
             reply(event, helpText());
-            return;
+            return true;
         }
 
         try {
@@ -99,7 +82,7 @@ public class LuckPermsPlugin implements BotPlugin {
             } else if (isAny(root, "user", "u")) {
                 reply(event, handleUser(event, args));
             } else {
-                reply(event, "未知命令。发送 " + command.prefix() + " help 查看可用命令。");
+                reply(event, "未知命令。发送 " + command.label() + " help 查看可用命令。");
             }
         } catch (CommandException e) {
             reply(event, e.getMessage());
@@ -107,6 +90,7 @@ public class LuckPermsPlugin implements BotPlugin {
             context.logger().warn("LuckPerms data operation failed", e);
             reply(event, "LuckPerms 数据读写失败，请查看控制台日志。");
         }
+        return true;
     }
 
     private String handleCheck(MessageEvent event, List<String> args) throws CommandException {
@@ -288,24 +272,6 @@ public class LuckPermsPlugin implements BotPlugin {
         }
     }
 
-    private ParsedCommand parseCommand(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        List<String> tokens = tokenize(raw.trim());
-        if (tokens.isEmpty()) {
-            return null;
-        }
-        String first = tokens.get(0).toLowerCase(Locale.ROOT);
-        for (String prefix : settings.getCommandPrefixes()) {
-            String normalizedPrefix = prefix == null ? "" : prefix.trim().toLowerCase(Locale.ROOT);
-            if (!normalizedPrefix.isEmpty() && first.equals(normalizedPrefix)) {
-                return new ParsedCommand(prefix.trim(), tokens.subList(1, tokens.size()));
-            }
-        }
-        return null;
-    }
-
     private String resolveUserId(MessageEvent event, String value) throws CommandException {
         String userId = event.resolveUserId(value);
         if (userId == null) {
@@ -418,41 +384,6 @@ public class LuckPermsPlugin implements BotPlugin {
         return value != null && value.contains("=");
     }
 
-    private List<String> tokenize(String input) {
-        List<String> tokens = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        boolean quoted = false;
-        char quote = 0;
-        for (int i = 0; i < input.length(); i++) {
-            char ch = input.charAt(i);
-            if (quoted) {
-                if (ch == quote) {
-                    quoted = false;
-                } else {
-                    current.append(ch);
-                }
-                continue;
-            }
-            if (ch == '"' || ch == '\'') {
-                quoted = true;
-                quote = ch;
-                continue;
-            }
-            if (Character.isWhitespace(ch)) {
-                if (!current.isEmpty()) {
-                    tokens.add(current.toString());
-                    current.setLength(0);
-                }
-                continue;
-            }
-            current.append(ch);
-        }
-        if (!current.isEmpty()) {
-            tokens.add(current.toString());
-        }
-        return tokens;
-    }
-
     private int parseInt(String value, String errorMessage) throws CommandException {
         try {
             return Integer.parseInt(value);
@@ -548,9 +479,6 @@ public class LuckPermsPlugin implements BotPlugin {
         return new PermissionEntry(key.trim(), node, contexts);
     }
 
-    private record ParsedCommand(String prefix, List<String> args) {
-    }
-
     private record ParsedCheckSubject(String groupId, Map<String, String> contexts) {
     }
 
@@ -577,36 +505,9 @@ public class LuckPermsPlugin implements BotPlugin {
     }
 
     public static class Settings {
-        private List<String> commandPrefixes = new ArrayList<>(BUILT_IN_COMMAND_PREFIXES);
-        private String adminPermission = "luckperms.admin";
-        private String noPermissionReply = "你没有权限使用 LuckPerms 命令。";
         private String dataFile = "permissions.yml";
         private String defaultGroup = "default";
         private boolean createAdminGroup = true;
-
-        public List<String> getCommandPrefixes() {
-            return commandPrefixes;
-        }
-
-        public void setCommandPrefixes(List<String> commandPrefixes) {
-            this.commandPrefixes = commandPrefixes == null ? new ArrayList<>() : commandPrefixes;
-        }
-
-        public String getAdminPermission() {
-            return adminPermission == null ? "" : adminPermission;
-        }
-
-        public void setAdminPermission(String adminPermission) {
-            this.adminPermission = adminPermission == null ? "" : adminPermission;
-        }
-
-        public String getNoPermissionReply() {
-            return noPermissionReply == null ? "" : noPermissionReply;
-        }
-
-        public void setNoPermissionReply(String noPermissionReply) {
-            this.noPermissionReply = noPermissionReply == null ? "" : noPermissionReply;
-        }
 
         public String getDataFile() {
             return dataFile == null || dataFile.isBlank() ? "permissions.yml" : dataFile;
