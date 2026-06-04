@@ -1,0 +1,4 @@
+id: plugin-template
+name: Plugin Template
+version: 1.0.0
+main: cn.zerobot.template.TemplatePlugin
