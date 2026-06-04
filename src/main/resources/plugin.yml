@@ -1,4 +1,4 @@
-id: plugin-template
-name: Plugin Template
+id: luckperms
+name: ZeroBot LuckPerms
 version: 1.0.0
-main: cn.zerobot.template.TemplatePlugin
+main: cn.zerobot.luckperms.LuckPermsPlugin

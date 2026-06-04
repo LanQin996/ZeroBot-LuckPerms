@@ -16,4 +16,10 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "zerobot-plugin-template"
+rootProject.name = "zerobot-luckperms"
+
+includeBuild("../ZeroBot") {
+    dependencySubstitution {
+        substitute(module("cn.zerobot:zerobot-plugin-api")).using(project(":zerobot-plugin-api"))
+    }
+}

@@ -1,131 +1,127 @@
-# ZeroBot 插件模板
+# ZeroBot LuckPerms
 
-这是一个可以独立复制出去的新插件模板。
+ZeroBot LuckPerms 是一个 LuckPerms 风格的权限组插件，用来接管 ZeroBot 的 `context.hasPermission(...)` 判断。
 
-插件开发者不需要下载整个 ZeroBot 源码，只需要能从 Maven 仓库拉到：
+## 功能
 
-```text
-cn.zerobot:zerobot-plugin-api:0.1.0
-```
+- 用户权限节点
+- 权限组和用户加入权限组
+- 权限组继承
+- 权限组权重
+- `*` 和 `xxx.*` 通配权限
+- 显式拒绝权限，例如 `false`
+- YAML 数据持久化
+- `/lp` 管理命令
 
-`zerobot-plugin-api` 是插件编译期依赖，ZeroBot 主程序运行时会提供这套 API。
+内置超级管理员仍然有效：插件会先询问 ZeroBot 原有权限服务，再判断权限组数据。
 
-## 复制后需要修改
-
-1. 修改 `build.gradle.kts`：
-
-```kotlin
-plugins {
-    java
-}
-
-group = "your.group"
-version = "1.0.0"
-
-dependencies {
-    compileOnly("cn.zerobot:zerobot-plugin-api:0.1.0")
-}
-
-tasks.jar {
-    archiveBaseName.set("你的插件 jar 名称")
-}
-```
-
-仓库配置在 `settings.gradle.kts` 里，当前使用：
-
-```kotlin
-maven {
-    url = uri("https://nexus.jsdu.cn/repository")
-}
-```
-
-2. 修改 `src/main/resources/plugin.yml`：
-
-```yml
-id: your-plugin-id
-name: Your Plugin Name
-version: 1.0.0
-main: your.package.YourPlugin
-```
-
-3. 修改 Java 包名和插件主类。
-
-`plugin.yml` 里的 `main` 必须等于插件主类的完整类名。
-
-## 构建模板
-
-在插件项目根目录执行：
+## 构建
 
 ```powershell
 .\gradlew.bat jar
 ```
 
-生成的插件 jar：
+生成文件：
 
 ```text
-build\libs\zerobot-plugin-template-1.0.0.jar
+build\libs\zerobot-luckperms-1.0.0.jar
 ```
 
-把 jar 放进 ZeroBot 运行目录的 `plugins` 文件夹，然后在 ZeroBot 控制台执行：
+把 JAR 放到 ZeroBot 运行目录的 `plugins` 文件夹，然后在控制台执行：
 
 ```text
-reload-all
+plugin load zerobot-luckperms-1.0.0.jar
 ```
 
-## 常用监听
+或重载全部插件：
 
-```java
-context.onGroupMessage(event -> {});    // 群消息
-context.onPrivateMessage(event -> {});  // 私聊消息
-context.onNotice(event -> {});          // 通知事件
-context.onRequest(event -> {});         // 请求事件
-context.onEvent(event -> {});           // 所有事件
+```text
+plugin reload-all
 ```
 
-## 权限节点
+## 配置
 
-模板已经示范了权限判断：
+首次加载会生成：
 
-```java
-if (!context.hasPermission(event, "template.ping", true)) {
-    return;
-}
+```text
+config/luckperms/config.yml
 ```
 
-ZeroBot 默认只读取主配置里的超级管理员：
+默认配置：
 
 ```yml
-superAdmins:
-  - "123456"
+commandPrefixes:
+  - "/lp"
+  - "/luckperms"
+adminPermission: "luckperms.admin"
+noPermissionReply: "你没有权限使用 LuckPerms 命令。"
+dataFile: "permissions.yml"
+defaultGroup: "default"
+createAdminGroup: true
 ```
 
-更细的权限组、继承和临时权限可以由后续权限管理插件接管。
+如果没有给用户授权 `luckperms.admin`，ZeroBot 主配置里的 `superAdmins` 仍然可以使用管理命令。
 
-如果命令不需要权限，直接不要调用 `hasPermission()`。
-如果命令有权限节点但默认所有人可用，使用第三个参数 `true`。
-
-## 插件配置
-
-模板已经示范了插件配置：
-
-```java
-Settings settings = context.loadConfig("config.yml", Settings.class);
-```
-
-首次加载插件时，ZeroBot 会自动生成：
+## 命令
 
 ```text
-config/<插件ID>/config.yml
+/lp help
+/lp groups
+/lp group <组名> create [权重]
+/lp group <组名> delete
+/lp group <组名> info
+/lp group <组名> weight <整数>
+/lp group <组名> permission set <权限节点> [true|false]
+/lp group <组名> permission unset <权限节点>
+/lp group <组名> parent add <父组>
+/lp group <组名> parent remove <父组>
+/lp user <QQ> info
+/lp user <QQ> parent add <组名>
+/lp user <QQ> parent remove <组名>
+/lp user <QQ> permission set <权限节点> [true|false]
+/lp user <QQ> permission unset <权限节点>
+/lp check <QQ> <权限节点> [群号]
+/lp reload
+/lp save
 ```
 
-插件运行数据可以放到：
-
-```java
-context.dataDir()
-```
-
-默认目录：
+示例：
 
 ```text
-data/<插件ID>/
+/lp group vip create 10
+/lp group vip permission set zerobot.echo true
+/lp user 123456 parent add vip
+/lp check 123456 zerobot.echo
+```
+
+## 数据文件
+
+数据保存在：
+
+```text
+data/luckperms/permissions.yml
+```
+
+示例：
+
+```yml
+defaultGroup: "default"
+groups:
+  default:
+    name: "default"
+    weight: 0
+    parents: []
+    permissions: {}
+  admin:
+    name: "admin"
+    weight: 100
+    parents: []
+    permissions:
+      "*": true
+      luckperms.admin: true
+users:
+  "123456":
+    groups:
+      - "admin"
+    permissions: {}
 ```
