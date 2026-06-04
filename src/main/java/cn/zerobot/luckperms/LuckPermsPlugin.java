@@ -870,17 +870,31 @@ public class LuckPermsPlugin implements BotPlugin {
         synchronized String formatUser(String userId) {
             String key = userId == null ? "" : userId.trim();
             PermissionUser user = store.users.getOrDefault(key, new PermissionUser());
-            return """
-                    用户：%s
-                    基础权限组：%s
-                    额外权限组：%s
-                    权限：%s
-                    """.formatted(
-                    key,
-                    settings.getDefaultGroup(),
-                    user.groups.isEmpty() ? "-" : String.join(", ", user.groups),
-                    formatPermissions(user.permissions)
-            ).strip();
+            String primaryGroup = settings.getDefaultGroup();
+            LinkedHashSet<String> parentGroups = new LinkedHashSet<>();
+            parentGroups.add(primaryGroup);
+            parentGroups.addAll(user.groups);
+
+            StringBuilder builder = new StringBuilder("[LP] > User Info: ")
+                    .append(key)
+                    .append('\n')
+                    .append("[LP] - Parent Groups:");
+            for (String group : parentGroups) {
+                builder.append('\n')
+                        .append("[LP]     > ")
+                        .append(group);
+            }
+            builder.append('\n')
+                    .append("[LP] - Contextual Data: (mode: zerobot)")
+                    .append('\n')
+                    .append("[LP]     Contexts: None")
+                    .append('\n')
+                    .append("[LP]     Primary Group: ")
+                    .append(primaryGroup)
+                    .append('\n')
+                    .append("[LP] - Direct Permissions:");
+            appendPermissionLines(builder, user.permissions);
+            return builder.toString();
         }
 
         private void ensureDefaults() {
@@ -1107,6 +1121,21 @@ public class LuckPermsPlugin implements BotPlugin {
             List<String> entries = new ArrayList<>();
             permissions.forEach((node, value) -> entries.add(node + "=" + value));
             return String.join(", ", entries);
+        }
+
+        private void appendPermissionLines(StringBuilder builder, Map<String, Boolean> permissions) {
+            if (permissions.isEmpty()) {
+                builder.append('\n')
+                        .append("[LP]     None");
+                return;
+            }
+            permissions.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> builder.append('\n')
+                            .append("[LP]     > ")
+                            .append(entry.getKey())
+                            .append(" = ")
+                            .append(entry.getValue()));
         }
     }
 
