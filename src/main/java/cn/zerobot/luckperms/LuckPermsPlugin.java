@@ -588,7 +588,7 @@ public class LuckPermsPlugin implements BotPlugin {
         }
 
         synchronized void loadOrCreate() throws IOException {
-            if (Files.notExists(file)) {
+            if (Files.notExists(file) || isBlankFile(file)) {
                 store = new PermissionStore();
                 ensureDefaults();
                 save();
@@ -597,6 +597,10 @@ public class LuckPermsPlugin implements BotPlugin {
             PermissionStore loaded = mapper.readValue(file.toFile(), PermissionStore.class);
             store = loaded == null ? new PermissionStore() : loaded;
             ensureDefaults();
+        }
+
+        private boolean isBlankFile(Path file) throws IOException {
+            return Files.size(file) == 0 || Files.readString(file).isBlank();
         }
 
         synchronized void save() throws IOException {
