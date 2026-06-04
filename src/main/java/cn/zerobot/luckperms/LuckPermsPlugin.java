@@ -111,12 +111,17 @@ public class LuckPermsPlugin implements BotPlugin {
 
     private String handleCheck(MessageEvent event, List<String> args) throws CommandException {
         if (args.size() < 3) {
-            throw new CommandException("用法：check <QQ> <权限节点> [群号]");
+            throw new CommandException("用法：check <QQ> <权限节点> [群号] [key=value...]");
         }
         String userId = resolveUserId(event, args.get(1));
         String permission = args.get(2);
-        String groupId = args.size() >= 4 ? args.get(3) : null;
-        PermissionSubject subject = new PermissionSubject(userId, groupId, groupId == null ? "private" : "group");
+        ParsedCheckSubject checkSubject = parseCheckSubject(args);
+        PermissionSubject subject = new PermissionSubject(
+                userId,
+                checkSubject.groupId(),
+                checkSubject.groupId() == null ? "private" : "group",
+                checkSubject.contexts()
+        );
         PermissionDecision decision = repository.resolve(subject, permission);
         boolean allowed = context.permission().hasPermission(subject, permission, false);
         if (decision == null) {
@@ -178,20 +183,30 @@ public class LuckPermsPlugin implements BotPlugin {
             }
             case "permission", "permissions", "perm", "perms", "p" -> {
                 if (args.size() < 5) {
-                    throw new CommandException("用法：group <组名> permission <set|unset> <权限节点> [true|false]");
+                    throw new CommandException("用法：group <组名> permission <set|unset> <权限节点> [true|false] [key=value...]");
                 }
                 String sub = args.get(3).toLowerCase(Locale.ROOT);
-                String node = args.get(4);
                 if (isAny(sub, "set", "add", "give", "grant", "allow")) {
-                    boolean value = args.size() >= 6 ? parseBoolean(args.get(5)) : true;
-                    repository.setGroupPermission(groupName, node, value);
-                    return "权限节点已设置：group " + normalizeName(groupName) + " " + normalizePermission(node) + " = " + value;
+                    PermissionSpec spec = parsePermissionSpec(
+                            args,
+                            4,
+                            true,
+                            "用法：group <组名> permission set <权限节点> [true|false] [key=value...]"
+                    );
+                    repository.setGroupPermission(groupName, spec.node(), spec.contexts(), spec.value());
+                    return "权限节点已设置：group " + normalizeName(groupName) + " " + spec.display() + " = " + spec.value();
                 }
                 if (isAny(sub, "unset", "remove", "delete", "del", "rm", "clear")) {
-                    repository.unsetGroupPermission(groupName, node);
-                    return "权限节点已移除：group " + normalizeName(groupName) + " " + normalizePermission(node);
+                    PermissionSpec spec = parsePermissionSpec(
+                            args,
+                            4,
+                            false,
+                            "用法：group <组名> permission unset <权限节点> [key=value...]"
+                    );
+                    repository.unsetGroupPermission(groupName, spec.node(), spec.contexts());
+                    return "权限节点已移除：group " + normalizeName(groupName) + " " + spec.display();
                 }
-                throw new CommandException("用法：group <组名> permission <set|unset> <权限节点> [true|false]");
+                throw new CommandException("用法：group <组名> permission <set|unset> <权限节点> [true|false] [key=value...]");
             }
             case "parent", "parents", "inheritance", "inherits" -> {
                 if (args.size() < 5) {
@@ -226,20 +241,30 @@ public class LuckPermsPlugin implements BotPlugin {
         switch (action) {
             case "permission", "permissions", "perm", "perms", "p" -> {
                 if (args.size() < 5) {
-                    throw new CommandException("用法：user <QQ> permission <set|unset> <权限节点> [true|false]");
+                    throw new CommandException("用法：user <QQ> permission <set|unset> <权限节点> [true|false] [key=value...]");
                 }
                 String sub = args.get(3).toLowerCase(Locale.ROOT);
-                String node = args.get(4);
                 if (isAny(sub, "set", "add", "give", "grant", "allow")) {
-                    boolean value = args.size() >= 6 ? parseBoolean(args.get(5)) : true;
-                    repository.setUserPermission(userId, node, value);
-                    return "用户权限已设置：" + userId + " " + normalizePermission(node) + " = " + value;
+                    PermissionSpec spec = parsePermissionSpec(
+                            args,
+                            4,
+                            true,
+                            "用法：user <QQ> permission set <权限节点> [true|false] [key=value...]"
+                    );
+                    repository.setUserPermission(userId, spec.node(), spec.contexts(), spec.value());
+                    return "用户权限已设置：" + userId + " " + spec.display() + " = " + spec.value();
                 }
                 if (isAny(sub, "unset", "remove", "delete", "del", "rm", "clear")) {
-                    repository.unsetUserPermission(userId, node);
-                    return "用户权限已移除：" + userId + " " + normalizePermission(node);
+                    PermissionSpec spec = parsePermissionSpec(
+                            args,
+                            4,
+                            false,
+                            "用法：user <QQ> permission unset <权限节点> [key=value...]"
+                    );
+                    repository.unsetUserPermission(userId, spec.node(), spec.contexts());
+                    return "用户权限已移除：" + userId + " " + spec.display();
                 }
-                throw new CommandException("用法：user <QQ> permission <set|unset> <权限节点> [true|false]");
+                throw new CommandException("用法：user <QQ> permission <set|unset> <权限节点> [true|false] [key=value...]");
             }
             case "parent", "parents", "inheritance", "inherits", "group", "groups" -> {
                 if (args.size() < 5) {
@@ -297,6 +322,82 @@ public class LuckPermsPlugin implements BotPlugin {
             }
         }
         return false;
+    }
+
+    private PermissionSpec parsePermissionSpec(
+            List<String> args,
+            int nodeIndex,
+            boolean allowValue,
+            String usage
+    ) throws CommandException {
+        if (args.size() <= nodeIndex) {
+            throw new CommandException(usage);
+        }
+        String node = normalizePermission(args.get(nodeIndex));
+        if (node.isBlank()) {
+            throw new CommandException("权限节点不能为空。");
+        }
+
+        boolean value = true;
+        int index = nodeIndex + 1;
+        if (allowValue && index < args.size() && isBooleanToken(args.get(index))) {
+            value = parseBoolean(args.get(index));
+            index++;
+        }
+
+        Map<String, String> contexts = parseContextTokens(args.subList(index, args.size()));
+        return new PermissionSpec(node, contexts, value);
+    }
+
+    private ParsedCheckSubject parseCheckSubject(List<String> args) throws CommandException {
+        String groupId = null;
+        int index = 3;
+        if (args.size() > index && !isContextToken(args.get(index))) {
+            groupId = args.get(index).trim();
+            index++;
+        }
+        Map<String, String> contexts = new LinkedHashMap<>(parseContextTokens(args.subList(index, args.size())));
+        if (groupId != null && !groupId.isBlank()) {
+            contexts.putIfAbsent("group", groupId);
+        }
+        if ((groupId == null || groupId.isBlank()) && contexts.containsKey("group")) {
+            groupId = contexts.get("group");
+        }
+        return new ParsedCheckSubject(groupId, contexts);
+    }
+
+    private Map<String, String> parseContextTokens(List<String> tokens) throws CommandException {
+        Map<String, String> contexts = new LinkedHashMap<>();
+        for (String token : tokens) {
+            if (token == null || token.isBlank()) {
+                continue;
+            }
+            int separator = token.indexOf('=');
+            if (separator <= 0 || separator == token.length() - 1) {
+                throw new CommandException("上下文必须使用 key=value 格式：" + token);
+            }
+            String key = normalizeContextPart(token.substring(0, separator));
+            String value = normalizeContextPart(token.substring(separator + 1));
+            if (key.isBlank() || value.isBlank()) {
+                throw new CommandException("上下文必须使用 key=value 格式：" + token);
+            }
+            contexts.put(key, value);
+        }
+        return contexts;
+    }
+
+    private boolean isBooleanToken(String value) {
+        if (value == null) {
+            return false;
+        }
+        return switch (value.toLowerCase(Locale.ROOT)) {
+            case "true", "allow", "yes", "1", "on", "false", "deny", "no", "0", "off" -> true;
+            default -> false;
+        };
+    }
+
+    private boolean isContextToken(String value) {
+        return value != null && value.contains("=");
     }
 
     private List<String> tokenize(String input) {
@@ -359,11 +460,11 @@ public class LuckPermsPlugin implements BotPlugin {
                 ZeroBot LuckPerms
                 /lp groups
                 /lp group <组名> create [权重]
-                /lp group <组名> permission set <节点> [true|false]
+                /lp group <组名> permission set <节点> [true|false] [key=value...]
                 /lp group <组名> parent add <父组>
                 /lp user <QQ> parent add <组名>
-                /lp user <QQ> permission set <节点> [true|false]
-                /lp check <QQ> <节点> [群号]
+                /lp user <QQ> permission set <节点> [true|false] [key=value...]
+                /lp check <QQ> <节点> [群号] [key=value...]
                 /lp reload
                 """.strip();
     }
@@ -373,10 +474,79 @@ public class LuckPermsPlugin implements BotPlugin {
     }
 
     private static String normalizePermission(String value) {
+        String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        return "*:*".equals(normalized) ? "*" : normalized;
+    }
+
+    private static String normalizeContextPart(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
+    private static String permissionKey(String node, Map<String, String> contexts) {
+        String normalizedNode = normalizePermission(node);
+        Map<String, String> normalizedContexts = normalizeContexts(contexts);
+        if (normalizedContexts.isEmpty()) {
+            return normalizedNode;
+        }
+        List<String> entries = new ArrayList<>();
+        normalizedContexts.forEach((key, value) -> entries.add(key + "=" + value));
+        entries.sort(String::compareTo);
+        return normalizedNode + " " + String.join(" ", entries);
+    }
+
+    private static Map<String, String> normalizeContexts(Map<String, String> contexts) {
+        Map<String, String> normalized = new LinkedHashMap<>();
+        if (contexts == null) {
+            return normalized;
+        }
+        contexts.forEach((key, value) -> {
+            String normalizedKey = normalizeContextPart(key);
+            String normalizedValue = normalizeContextPart(value);
+            if (!normalizedKey.isBlank() && !normalizedValue.isBlank()) {
+                normalized.put(normalizedKey, normalizedValue);
+            }
+        });
+        return normalized;
+    }
+
+    private static PermissionEntry parsePermissionEntry(String key) {
+        if (key == null || key.isBlank()) {
+            return new PermissionEntry("", "", Map.of());
+        }
+        String[] tokens = key.trim().split("\\s+");
+        String node = normalizePermission(tokens[0]);
+        Map<String, String> contexts = new LinkedHashMap<>();
+        for (int i = 1; i < tokens.length; i++) {
+            int separator = tokens[i].indexOf('=');
+            if (separator <= 0 || separator == tokens[i].length() - 1) {
+                continue;
+            }
+            String contextKey = normalizeContextPart(tokens[i].substring(0, separator));
+            String contextValue = normalizeContextPart(tokens[i].substring(separator + 1));
+            if (!contextKey.isBlank() && !contextValue.isBlank()) {
+                contexts.put(contextKey, contextValue);
+            }
+        }
+        return new PermissionEntry(key.trim(), node, contexts);
+    }
+
     private record ParsedCommand(String prefix, List<String> args) {
+    }
+
+    private record ParsedCheckSubject(String groupId, Map<String, String> contexts) {
+    }
+
+    private record PermissionSpec(String node, Map<String, String> contexts, boolean value) {
+        String key() {
+            return permissionKey(node, contexts);
+        }
+
+        String display() {
+            return key();
+        }
+    }
+
+    private record PermissionEntry(String storageKey, String node, Map<String, String> contexts) {
     }
 
     private record PermissionDecision(boolean value, String source) {
@@ -548,13 +718,22 @@ public class LuckPermsPlugin implements BotPlugin {
             save();
         }
 
-        synchronized void setGroupPermission(String name, String permission, boolean value) throws IOException, CommandException {
-            group(name).permissions.put(requirePermission(permission), value);
+        synchronized void setGroupPermission(
+                String name,
+                String permission,
+                Map<String, String> contexts,
+                boolean value
+        ) throws IOException, CommandException {
+            group(name).permissions.put(requirePermission(permission, contexts), value);
             save();
         }
 
-        synchronized void unsetGroupPermission(String name, String permission) throws IOException, CommandException {
-            group(name).permissions.remove(requirePermission(permission));
+        synchronized void unsetGroupPermission(
+                String name,
+                String permission,
+                Map<String, String> contexts
+        ) throws IOException, CommandException {
+            group(name).permissions.remove(requirePermission(permission, contexts));
             save();
         }
 
@@ -574,13 +753,22 @@ public class LuckPermsPlugin implements BotPlugin {
             save();
         }
 
-        synchronized void setUserPermission(String userId, String permission, boolean value) throws IOException, CommandException {
-            user(userId).permissions.put(requirePermission(permission), value);
+        synchronized void setUserPermission(
+                String userId,
+                String permission,
+                Map<String, String> contexts,
+                boolean value
+        ) throws IOException, CommandException {
+            user(userId).permissions.put(requirePermission(permission, contexts), value);
             save();
         }
 
-        synchronized void unsetUserPermission(String userId, String permission) throws IOException, CommandException {
-            user(userId).permissions.remove(requirePermission(permission));
+        synchronized void unsetUserPermission(
+                String userId,
+                String permission,
+                Map<String, String> contexts
+        ) throws IOException, CommandException {
+            user(userId).permissions.remove(requirePermission(permission, contexts));
             save();
         }
 
@@ -606,13 +794,13 @@ public class LuckPermsPlugin implements BotPlugin {
             }
             PermissionUser user = store.users.get(subject.userId().trim());
             if (user != null) {
-                PermissionDecision decision = lookup(user.permissions, node, "user:" + subject.userId().trim());
+                PermissionDecision decision = lookup(user.permissions, node, "user:" + subject.userId().trim(), subject);
                 if (decision != null) {
                     return decision;
                 }
             }
             for (PermissionGroup group : resolvedGroups(user)) {
-                PermissionDecision decision = lookup(group.permissions, node, "group:" + group.name);
+                PermissionDecision decision = lookup(group.permissions, node, "group:" + group.name, subject);
                 if (decision != null) {
                     return decision;
                 }
@@ -781,12 +969,12 @@ public class LuckPermsPlugin implements BotPlugin {
             return key;
         }
 
-        private String requirePermission(String value) throws CommandException {
-            String key = normalizePermission(value);
-            if (key.isBlank()) {
+        private String requirePermission(String value, Map<String, String> contexts) throws CommandException {
+            String node = normalizePermission(value);
+            if (node.isBlank()) {
                 throw new CommandException("权限节点不能为空。");
             }
-            return key;
+            return permissionKey(node, contexts);
         }
 
         private List<PermissionGroup> resolvedGroups(PermissionUser user) {
@@ -821,24 +1009,70 @@ public class LuckPermsPlugin implements BotPlugin {
             visiting.remove(key);
         }
 
-        private PermissionDecision lookup(Map<String, Boolean> permissions, String permission, String source) {
+        private PermissionDecision lookup(Map<String, Boolean> permissions, String permission, String source, PermissionSubject subject) {
             if (permissions == null || permissions.isEmpty()) {
                 return null;
             }
-            Boolean exact = permissions.get(permission);
-            if (exact != null) {
-                return new PermissionDecision(exact, source + ":" + permission);
+            PermissionDecision contextual = lookupContextual(permissions, permission, source, subject);
+            if (contextual != null) {
+                return contextual;
             }
-            String[] parts = permission.split("\\.");
-            for (int i = parts.length - 1; i >= 1; i--) {
-                String wildcard = String.join(".", List.of(parts).subList(0, i)) + ".*";
-                Boolean value = permissions.get(wildcard);
+            for (String candidate : permissionCandidates(permission)) {
+                Boolean value = permissions.get(candidate);
                 if (value != null) {
-                    return new PermissionDecision(value, source + ":" + wildcard);
+                    return new PermissionDecision(value, source + ":" + candidate);
                 }
             }
-            Boolean global = permissions.get("*");
-            return global == null ? null : new PermissionDecision(global, source + ":*");
+            return null;
+        }
+
+        private PermissionDecision lookupContextual(
+                Map<String, Boolean> permissions,
+                String permission,
+                String source,
+                PermissionSubject subject
+        ) {
+            Map<String, String> subjectContexts = subject == null ? Map.of() : subject.contexts();
+            if (subjectContexts.isEmpty()) {
+                return null;
+            }
+            List<String> permissionCandidates = permissionCandidates(permission);
+            List<PermissionEntry> candidates = permissions.keySet().stream()
+                    .map(LuckPermsPlugin::parsePermissionEntry)
+                    .filter(entry -> !entry.contexts().isEmpty())
+                    .filter(entry -> contextsMatch(subjectContexts, entry.contexts()))
+                    .filter(entry -> permissionCandidates.contains(entry.node()))
+                    .sorted(Comparator.comparingInt((PermissionEntry entry) -> permissionCandidates.indexOf(entry.node()))
+                            .thenComparing(Comparator.comparingInt((PermissionEntry entry) -> entry.contexts().size()).reversed())
+                            .thenComparing(PermissionEntry::storageKey))
+                    .toList();
+            for (PermissionEntry entry : candidates) {
+                Boolean value = permissions.get(entry.storageKey());
+                if (value != null) {
+                    return new PermissionDecision(value, source + ":" + entry.storageKey());
+                }
+            }
+            return null;
+        }
+
+        private boolean contextsMatch(Map<String, String> subjectContexts, Map<String, String> requiredContexts) {
+            for (Map.Entry<String, String> entry : requiredContexts.entrySet()) {
+                if (!entry.getValue().equals(subjectContexts.get(entry.getKey()))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private List<String> permissionCandidates(String permission) {
+            List<String> candidates = new ArrayList<>();
+            candidates.add(permission);
+            String[] parts = permission.split("\\.");
+            for (int i = parts.length - 1; i >= 1; i--) {
+                candidates.add(String.join(".", List.of(parts).subList(0, i)) + ".*");
+            }
+            candidates.add("*");
+            return candidates;
         }
 
         private String formatPermissions(Map<String, Boolean> permissions) {

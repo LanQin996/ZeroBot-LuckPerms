@@ -10,6 +10,7 @@ ZeroBot LuckPerms 是一个 LuckPerms 风格的权限组插件，用来接管 Ze
 - 权限组权重
 - `*` 和 `xxx.*` 通配权限
 - 显式拒绝权限，例如 `false`
+- 上下文权限，例如 `group=123456`、`admin=true`
 - YAML 数据持久化
 - `/lp` 管理命令
 
@@ -71,16 +72,16 @@ createAdminGroup: true
 /lp group <组名> delete
 /lp group <组名> info
 /lp group <组名> weight <整数>
-/lp group <组名> permission set <权限节点> [true|false]
-/lp group <组名> permission unset <权限节点>
+/lp group <组名> permission set <权限节点> [true|false] [key=value...]
+/lp group <组名> permission unset <权限节点> [key=value...]
 /lp group <组名> parent add <父组>
 /lp group <组名> parent remove <父组>
 /lp user <QQ> info
 /lp user <QQ> parent add <组名>
 /lp user <QQ> parent remove <组名>
-/lp user <QQ> permission set <权限节点> [true|false]
-/lp user <QQ> permission unset <权限节点>
-/lp check <QQ> <权限节点> [群号]
+/lp user <QQ> permission set <权限节点> [true|false] [key=value...]
+/lp user <QQ> permission unset <权限节点> [key=value...]
+/lp check <QQ> <权限节点> [群号] [key=value...]
 /lp reload
 /lp save
 ```
@@ -92,6 +93,21 @@ createAdminGroup: true
 /lp group vip permission set zerobot.echo true
 /lp user 123456 parent add vip
 /lp check 123456 zerobot.echo
+/lp group vip permission set zerobot.echo true group=987654
+/lp check 123456 zerobot.echo group=987654
+```
+
+常用上下文：
+
+```text
+type=group
+type=private
+group=<群号>
+level=member
+level=administrator
+level=owner
+admin=true
+admin=false
 ```
 
 ## 数据文件
