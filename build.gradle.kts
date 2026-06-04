@@ -16,7 +16,7 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 dependencies {
-    compileOnly("cn.zerobot:zerobot-plugin-api:0.1.0")
+    compileOnly("cn.zerobot:zerobot-plugin-api:0.1.1")
     compileOnly("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.17.2")
 }
 
