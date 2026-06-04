@@ -48,7 +48,7 @@ public class LuckPermsPlugin implements BotPlugin {
             }
         });
 
-        context.logger().info("ZeroBot LuckPerms 已加载，数据文件：{}", repository.file());
+        context.logger().info("ZeroBot LuckPerms 已加载，数据文件：{}", displayDataPath(repository.file()));
     }
 
     @Override
@@ -322,6 +322,22 @@ public class LuckPermsPlugin implements BotPlugin {
             }
         }
         return false;
+    }
+
+    private String displayDataPath(Path file) {
+        Path dataRoot = context.dataDir().getParent();
+        Path normalized = file.toAbsolutePath().normalize();
+        if (dataRoot != null) {
+            Path normalizedDataRoot = dataRoot.toAbsolutePath().normalize();
+            if (normalized.startsWith(normalizedDataRoot)) {
+                return toPortablePath(Path.of("data").resolve(normalizedDataRoot.relativize(normalized)));
+            }
+        }
+        return toPortablePath(normalized);
+    }
+
+    private String toPortablePath(Path path) {
+        return path.toString().replace('\\', '/');
     }
 
     private PermissionSpec parsePermissionSpec(
